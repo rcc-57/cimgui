@@ -1,0 +1,36 @@
+name: Measurement Control Windows
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'measurement_app/**'
+      - '.github/workflows/measurement-windows.yml'
+  pull_request:
+    paths:
+      - 'measurement_app/**'
+      - '.github/workflows/measurement-windows.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Configure
+        run: cmake -S measurement_app -B build/measurement-windows -A x64 -DBUILD_TESTING=ON
+      - name: Build
+        run: cmake --build build/measurement-windows --config Release --parallel
+      - name: Test protocol decoder
+        run: ctest --test-dir build/measurement-windows -C Release --output-on-failure
+      - uses: actions/upload-artifact@v4
+        with:
+          name: measurement-control-windows-x64
+          path: |
+            build/measurement-windows/Release/measurement_control.exe
+            measurement_app/README.md
+          if-no-files-found: error

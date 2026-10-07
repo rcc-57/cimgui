@@ -1,14 +1,15 @@
 /* Platform/render loop adapted from backend_test/example_glfw_opengl3/main.c. */
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#endif
 #define CIMGUI_DEFINE_ENUMS_AND_STRUCTS
 #include "cimgui.h"
 #include "cimgui_impl.h"
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
-#ifdef __APPLE__
-#include <OpenGL/gl3.h>
-#else
 #include <GL/gl.h>
-#endif
 #include <stdio.h>
 #include <string.h>
 #include "instrument_ui.h"
@@ -31,12 +32,12 @@ int main(int argc, char **argv)
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
-    GLFWwindow *window = glfwCreateWindow(900, 720, "Measurement Instrument Control", NULL, NULL);
+    GLFWwindow *window = glfwCreateWindow(1000, 920, "Measurement Instrument Control", NULL, NULL);
     if (!window) {
         glfwTerminate();
         return 1;
     }
-    glfwSetWindowSizeLimits(window, 600, 640, GLFW_DONT_CARE, GLFW_DONT_CARE);
+    glfwSetWindowSizeLimits(window, 760, 780, GLFW_DONT_CARE, GLFW_DONT_CARE);
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1);
     printf("OpenGL: %s\n", (const char *)glGetString(GL_VERSION));
@@ -46,7 +47,6 @@ int main(int argc, char **argv)
     io->ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io->IniFilename = NULL;
     igStyleColorsDark(NULL);
-    /* GLFW window dimensions are logical pixels; the renderer handles Retina. */
     bool platform_ready = ImGui_ImplGlfw_InitForOpenGL(window, true);
     bool renderer_ready = platform_ready && ImGui_ImplOpenGL3_Init("#version 150");
     if (!renderer_ready) {
@@ -58,12 +58,16 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    InstrumentState instrument = {0};
+    /* Static storage keeps history/log buffers off the limited Windows stack. */
+    static InstrumentState instrument;
+    instrument_ui_init(&instrument);
     unsigned frames = 0;
     int result = 0;
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
         if (glfwWindowShouldClose(window)) break;
+        double now = glfwGetTime();
+        akip_device_tick(&instrument.device, now);
         int width, height;
         glfwGetFramebufferSize(window, &width, &height);
         if (width == 0 || height == 0) {
@@ -73,7 +77,7 @@ int main(int argc, char **argv)
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         igNewFrame();
-        instrument_ui_draw(&instrument);
+        instrument_ui_draw(&instrument, now);
         igRender();
         glViewport(0, 0, width, height);
         glClearColor(0.08f, 0.09f, 0.11f, 1.0f);
@@ -88,9 +92,10 @@ int main(int argc, char **argv)
         ++frames;
         /* Exercise resize/event processing and the normal cleanup path.
          * This test never changes measurement state. */
-        if (smoke_test && frames == 30) glfwSetWindowSize(window, 760, 680);
+        if (smoke_test && frames == 30) glfwSetWindowSize(window, 800, 820);
         if (smoke_test && frames == 120) glfwSetWindowShouldClose(window, GLFW_TRUE);
     }
+    akip_device_disconnect(&instrument.device);
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     igDestroyContext(NULL);

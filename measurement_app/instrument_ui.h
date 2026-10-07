@@ -1,19 +1,20 @@
 #ifndef INSTRUMENT_UI_H
 #define INSTRUMENT_UI_H
 
-#include <stdbool.h>
+#include "akip_device.h"
 
-/* The future AKIP-2205 module will update this state on the GUI thread.
- * No instrument I/O belongs in the drawing code. */
 typedef struct {
-    bool has_measurement;
-    char mode[64];
-    char value[64];
-    char unit[32];
-    char port[128];
+    AkipDevice device;
+    char port[16];
+    char ports[AKIP_PORTS][16];
+    char port_labels[AKIP_PORTS][192];
+    int port_count, port_index, terminator_index;
     int instrument_index;
+    char export_path[260];
+    bool auto_scroll;
 } InstrumentState;
 
-void instrument_ui_draw(InstrumentState *state);
+void instrument_ui_init(InstrumentState *state);
+void instrument_ui_draw(InstrumentState *state, double now);
 
 #endif
