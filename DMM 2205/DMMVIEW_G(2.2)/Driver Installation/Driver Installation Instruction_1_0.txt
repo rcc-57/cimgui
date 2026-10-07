@@ -1,0 +1,47 @@
+Driver Installation Instruction
+
+Version£º1.0
+=======================================================
+
+* Virtual COM Port Driver Installation Windows 2000
+------------------------------------------------------------------------------------------------------
+Follow these steps to install the Windows 2000 VCOM driver:
+1. Unplug any connected CP210x devices.
+2. Remove old drivers that have previously been installed. For Windows systems, open the Add or Remove Programs window from the Control Panel. Next, select each CP210x entry and click on Remove.
+3. Run the driver executable, CP210x_VCP_Win2K_XP.exe. The default installation directory for this release is "C:\Silabs\Mcu\CP210x".
+4. Connect the USB cable between the host computer and the CP210x target device.
+5. Windows will open a "Found New Hardware Wizard" window. Press Next to continue.
+6. Select "Search for a suitable driver for my device (recommended)" and press Next.
+7. Check "Specify a location" and press Next.
+8. Press Browse to locate the "slabbus.inf" driver installation file. The default location is the"C:\SiLabs\MCU\CP210x\WIN" directory. Once this file is selected press OK.
+9. Verify that the correct path and filename are shown and press Next.
+10. Press Finish to finish installing the "CP210x USB Composite Device".
+11. Windows will open a second "Found New Hardware Wizard" window. Press Next to continue.
+12. Select "Search for a suitable driver for my device (recommended)" and press Next.
+13. Check "Specify a location" and press Next.
+14. Press Browse to locate the "slabw2k.inf" driver installation file. The default location is the"C:\SiLabs\MCU\CP210x\WIN" directory. Once this file is selected press OK.
+15. Verify that the correct path and filename are shown and press Next.
+16. Press Finish to finish installing the "CP210x USB to UART Bridge Controller"
+
+-------------------------------------------------------------------------------------------------------------
+
+* Virtual COM Port Driver Installation Windows XP
+-------------------------------------------------------------------------------------------------------------
+Follow these steps to install the Windows XP VCOM driver:
+1. Unplug any connected CP210x devices.
+2. Remove old drivers that have previously been installed. For Windows systems, open the Add or Remove Programs window from the Control Panel. Next, select each CP210x entry and click on Remove.
+3. Run the driver executable, CP210x_VCP_Win2K_XP.exe, The default installation directory for this release is "C:\Silabs\Mcu\CP210x".
+4. Connect the USB cable between the host computer and the CP210x target device.
+5. Windows will open a "Found New Hardware Wizard" window.
+6. Select "Install from a list or specific location (Advanced)" and press Next.
+7. Select "Include this location in the search".
+8. Press Browse to locate the "C:\SiLabs\MCU\CP210x\WIN" directory. Once this directory is selected press OK.
+9. Verify that the correct path and filename are shown and press Next.
+10. Press Finish to finish installing the "CP210x USB Composite Device".
+11. Windows will open a second "Found New Hardware Wizard" window.
+12. Select "Install from a list or specific location (Advanced)" and press Next.
+13. Select "Include this location in the search".
+14. Press Browse to locate the "C:\SiLabs\MCU\CP210x\WIN" directory. Once this directory is selected press OK.
+15. Verify that the correct path and filename are shown and press Next.
+16. Press Finish to finish installing the "CP210x USB to UART Bridge Controller".
+
