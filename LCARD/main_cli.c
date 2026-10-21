@@ -3,7 +3,7 @@
 #include <string.h>
 #include "e502_ctrl.h"
 
-/* Вспомогательная расшифровка констант диапазона для вывода в консоль */
+/* Helper to convert ADC range constants to readable string */
 static const char* range_to_str(uint32_t range) {
     switch (range) {
         case X502_ADC_RANGE_10:  return "+/-10 V";
@@ -16,67 +16,75 @@ static const char* range_to_str(uint32_t range) {
     }
 }
 
-/* Вспомогательная расшифровка режима канала */
+/* Helper to convert input connection mode to readable string */
 static const char* mode_to_str(uint32_t mode) {
     switch (mode) {
-        case X502_LCH_MODE_COMM: return "COMM (Общая земля)";
-        case X502_LCH_MODE_DIFF: return "DIFF (Дифференц.)";
-        case X502_LCH_MODE_ZERO: return "ZERO (Изм. нуля)";
+        case X502_LCH_MODE_COMM: return "COMM (Common Ground)";
+        case X502_LCH_MODE_DIFF: return "DIFF (Differential)";
+        case X502_LCH_MODE_ZERO: return "ZERO (Zero Calibration)";
         default:                 return "UNKNOWN";
     }
 }
 
+/* Print command line reference */
 static void print_help(void) {
-    printf("\n--- Команды управления стендом L-Card E-502 ---\n"
-           "  scan                          - Найти доступные модули E-502 по USB\n"
-           "  open [serial]                 - Открыть связь по USB (без аргумента - первый доступный)\n"
-           "  info                          - Вывести аппаратную информацию о модуле и статус настроек\n"
-           "  ch_cnt <N>                    - Задать число логических каналов АЦП (1..%d)\n"
-           "  ch_set <lch> <phy> <m> <r> <a>- Настроить логический канал <lch>:\n"
-           "                                  <phy>: физ. канал (0..31 для COMM, 0..15 для DIFF)\n"
-           "                                  <m>  : режим (0=COMM, 1=DIFF, 2=ZERO)\n"
-           "                                  <r>  : диапазон (0=10V, 1=5V, 2=2V, 3=1V, 4=0.5V, 5=0.2V)\n"
-           "                                  <a>  : усреднение (0=авто, 1..128)\n"
-           "  pullup <hex_mask>             - Задать маску подтяжек входов (например, 0x04 для SYN1)\n"
-           "  apply                         - Записать текущие настройки в модуль (X502_Configure)\n"
-           "  adc [count]                   - Считать и вывести 1 или [count] кадров АЦП (в Вольтах)\n"
-           "  dac <1|2> <volts>             - Выдать напряжение <volts> В на канал ЦАП 1 или 2\n"
-           "  blink                         - Моргнуть светодиодом LED1 на корпусе прибора\n"
-           "  close                         - Закрыть соединение с модулем\n"
-           "  help                          - Показать эту справку\n"
-           "  exit                          - Выйти из программы\n\n", STAND_MAX_CHANNELS);
+    printf("\n==================== L-Card E-502 CLI Commands ====================\n"
+           "  scan                           - Scan USB bus for available modules\n"
+           "  open [serial]                  - Connect via USB (first found if omitted)\n"
+           "  info                           - Show hardware info, board rev, and status\n"
+           "  ch_cnt <N>                     - Set number of active logical channels (1..%d)\n"
+           "  ch_set <lch> <phy> <m> <r> <a> - Configure logical channel <lch>:\n"
+           "                                   <phy>: physical ch (0..31 COMM, 0..15 DIFF)\n"
+           "                                   <m>  : mode (0=COMM, 1=DIFF, 2=ZERO)\n"
+           "                                   <r>  : range (0=10V, 1=5V, 2=2V, 3=1V, 4=0.5V, 5=0.2V)\n"
+           "                                   <a>  : averaging factor (0=off/auto, 1..128)\n"
+           "  pullup <hex_mask>              - Set pull-up/pull-down bitmask (e.g. 0x04 for SYN1)\n"
+           "  apply                          - Commit and write configuration to FPGA registers\n"
+           "  adc [count]                    - Read and display 1 or [count] ADC frames (in Volts)\n"
+           "  dac <1|2> <volts>              - Output voltage <volts> to DAC channel 1 or 2\n"
+           "  blink                          - Blink LED1 on front panel for visual identification\n"
+           "  close                          - Disconnect and release device handle\n"
+           "  help                           - Show this help message\n"
+           "  exit                           - Disconnect and exit CLI\n"
+           "===================================================================\n\n", STAND_MAX_CHANNELS);
 }
 
+/* Print current hardware info and channel mapping */
 static void print_status(const E502_StandDevice *dev) {
     if (!dev->is_connected) {
-        printf("[Статус] Модуль НЕ подключен.\n");
+        printf("[STATUS] Device is NOT connected.\n");
         return;
     }
-    printf("\n=== Паспорт и состояние модуля %s (S/N: %s) ===\n",
-           dev->dev_info.name, dev->dev_info.serial);
-    printf("  Версия ПЛИС       : %u.%u\n",
+
+    printf("\n=== Device Information (S/N: %s) ===\n", dev->dev_info.serial);
+    printf("  Model Name        : %s\n", dev->dev_info.name);
+    printf("  FPGA Version      : %u.%u\n",
            (dev->dev_info.fpga_ver >> 8) & 0xFF, dev->dev_info.fpga_ver & 0xFF);
-    printf("  Ревизия платы     : %u (PLDA: %u)\n",
+    printf("  Board Revision    : %u (PLDA: %u)\n",
            dev->dev_info.board_rev, dev->dev_info.plda_ver);
-    printf("  Прошивка Cortex-M4: 0x%08X\n", dev->dev_info.mcu_firmware_ver);
-    printf("  Flash-память      : %u байт\n", dev->dev_info.flash_size);
-    printf("  Процессор BlackFin: %s\n",
-           (dev->dev_info.devflags & X502_DEVFLAGS_BF_PRESENT) ? "Присутствует" : "Отсутствует");
-    printf("  Синхронизация     : %s\n",
-           dev->config_dirty ? "ТРЕБУЕТСЯ APPLY (настройки изменены)" : "ОК (записано в ПЛИС)");
-    printf("  Подтяжки (pullups): 0x%02X\n", dev->pullups_mask);
-    printf("  Выходы ЦАП        : DAC1 = %.3f V | DAC2 = %.3f V\n",
+    printf("  Cortex-M4 Firmware: %u.%u.%u.%u\n",
+           (dev->dev_info.mcu_firmware_ver >> 24) & 0xFF,
+           (dev->dev_info.mcu_firmware_ver >> 16) & 0xFF,
+           (dev->dev_info.mcu_firmware_ver >> 8) & 0xFF,
+           dev->dev_info.mcu_firmware_ver & 0xFF);
+    printf("  BlackFin DSP      : %s\n",
+           (dev->dev_info.devflags & X502_DEVFLAGS_BF_PRESENT) ? "PRESENT" : "ABSENT");
+    printf("  FPGA Config Sync  : %s\n",
+           dev->config_dirty ? "DIRTY (needs 'apply')" : "SYNCHRONIZED");
+    printf("  Digital Pull-ups  : 0x%02X\n", dev->pullups_mask);
+    printf("  DAC Outputs       : DAC1 = %.3f V | DAC2 = %.3f V\n",
            dev->dac_volts[0], dev->dac_volts[1]);
 
-    printf("\n--- Таблица логических каналов АЦП (активно: %u) ---\n", dev->lch_count);
+    printf("\n--- Active Logical Channels (%u channel(s)) ---\n", dev->lch_count);
     for (uint32_t i = 0; i < dev->lch_count; i++) {
-        printf("  LCH[%2u] -> Физ.канал: %2u | Режим: %-20s | Диапазон: %-8s | Усредн.: %u\n",
-               i, dev->lch_cfg[i].phy_ch,
+        printf("  LCH[%2u] -> PhyInput: %2u | Mode: %-22s | Range: %-8s | Avg: %u\n",
+               i,
+               dev->lch_cfg[i].phy_ch,
                mode_to_str(dev->lch_cfg[i].mode),
                range_to_str(dev->lch_cfg[i].range),
                dev->lch_cfg[i].avg);
     }
-    printf("==================================================\n");
+    printf("===================================================\n\n");
 }
 
 int main(void) {
@@ -84,14 +92,19 @@ int main(void) {
     E502_StandInitStruct(&stand);
 
     char line[256];
-    printf("Консоль лабораторного стенда L-Card E-502 запущена. Введите 'help' для списка команд.\n");
+    printf("L-Card E-502 Console Interface initialized.\nType 'help' to view available commands.\n\n");
 
     while (1) {
-        printf("E502%s> ", stand.is_connected ? (stand.config_dirty ? "* (не прим.)" : " (онлайн)") : " (оффлайн)");
-        if (fgets(line, sizeof(line), stdin) == NULL) break;
+        /* Prompt reflects current online/offline and dirty configuration state */
+        printf("E502%s> ", stand.is_connected ? (stand.config_dirty ? "* (unapplied)" : " (online)") : " (offline)");
+        if (fgets(line, sizeof(line), stdin) == NULL) {
+            break;
+        }
 
         char cmd[32] = {0};
-        if (sscanf(line, "%31s", cmd) != 1) continue;
+        if (sscanf(line, "%31s", cmd) != 1) {
+            continue;
+        }
 
         if (strcmp(cmd, "exit") == 0 || strcmp(cmd, "quit") == 0) {
             break;
@@ -99,23 +112,27 @@ int main(void) {
             print_help();
         } else if (strcmp(cmd, "scan") == 0) {
             char serials[8][X502_SERIAL_SIZE];
-            uint32_t fnd = 0;
-            if (E502_StandListUSB(serials, 8, &fnd) == X502_ERR_OK) {
-                printf("Найдено свободных USB-модулей E-502: %u\n", fnd);
-                for (uint32_t i = 0; i < fnd && i < 8; i++) {
+            uint32_t found = 0;
+            if (E502_StandListUSB(serials, 8, &found) == X502_ERR_OK) {
+                printf("Found %u free USB device(s):\n", found);
+                for (uint32_t i = 0; i < found && i < 8; i++) {
                     printf("  [%u] S/N: %s\n", i, serials[i]);
                 }
             } else {
-                printf("Ошибка поиска USB.\n");
+                printf("[ERROR] Failed to query USB devices.\n");
             }
         } else if (strcmp(cmd, "open") == 0) {
             char serial[X502_SERIAL_SIZE] = {0};
             sscanf(line, "%*s %31s", serial);
-            if (stand.is_connected) E502_StandDisconnect(&stand);
+            if (stand.is_connected) {
+                E502_StandDisconnect(&stand);
+            }
             if (E502_StandConnectUSB(&stand, serial[0] ? serial : NULL) == X502_ERR_OK) {
-                printf("Успешно подключено к %s (S/N: %s)\n", stand.dev_info.name, stand.dev_info.serial);
+                printf("[SUCCESS] Connected to %s (S/N: %s)\n",
+                       stand.dev_info.name, stand.dev_info.serial);
             } else {
-                printf("Ошибка открытия: %s\n", E502_StandGetErrorStr(&stand));
+                printf("[ERROR] Connection failed: %s (code %d)\n",
+                       E502_StandGetErrorStr(&stand), stand.last_error);
             }
         } else if (strcmp(cmd, "info") == 0 || strcmp(cmd, "status") == 0) {
             print_status(&stand);
@@ -123,10 +140,12 @@ int main(void) {
             uint32_t cnt = 0;
             if (sscanf(line, "%*s %u", &cnt) == 1) {
                 if (E502_StandSetChannelCount(&stand, cnt) == X502_ERR_OK) {
-                    printf("Количество логических каналов установлено в %u (выполните 'apply' или 'adc').\n", cnt);
+                    printf("[OK] Logical channel count set to %u. Run 'apply' to write to FPGA.\n", cnt);
                 } else {
-                    printf("Ошибка установки количества каналов: %s\n", E502_StandGetErrorStr(&stand));
+                    printf("[ERROR] Failed to set channel count: %s\n", E502_StandGetErrorStr(&stand));
                 }
+            } else {
+                printf("Usage: ch_cnt <count>\n");
             }
         } else if (strcmp(cmd, "ch_set") == 0) {
             uint32_t lch, phy, m_idx, r_idx, avg;
@@ -136,30 +155,32 @@ int main(void) {
                                       X502_ADC_RANGE_1, X502_ADC_RANGE_05, X502_ADC_RANGE_02};
                 if (m_idx < 3 && r_idx < 6) {
                     if (E502_StandConfigChannel(&stand, lch, phy, modes[m_idx], ranges[r_idx], avg) == X502_ERR_OK) {
-                        printf("Канал LCH[%u] настроен. Выполните 'apply' для записи в модуль.\n", lch);
+                        printf("[OK] Channel LCH[%u] configured. Run 'apply' to write to FPGA.\n", lch);
                     } else {
-                        printf("Ошибка настройки канала: %s\n", E502_StandGetErrorStr(&stand));
+                        printf("[ERROR] Channel config failed: %s\n", E502_StandGetErrorStr(&stand));
                     }
                 } else {
-                    printf("Неверный индекс режима (0..2) или диапазона (0..5).\n");
+                    printf("[ERROR] Invalid mode index (0..2) or range index (0..5).\n");
                 }
             } else {
-                printf("Формат: ch_set <lch> <phy> <mode 0..2> <range 0..5> <avg>\n");
+                printf("Usage: ch_set <lch> <phy> <mode 0..2> <range 0..5> <avg>\n");
             }
         } else if (strcmp(cmd, "pullup") == 0) {
             uint32_t mask = 0;
             if (sscanf(line, "%*s %x", &mask) == 1) {
                 if (E502_StandSetPullups(&stand, mask) == X502_ERR_OK) {
-                    printf("Маска подтяжек 0x%02X задана.\n", mask);
+                    printf("[OK] Pull-up mask set to 0x%02X. Run 'apply' to write to FPGA.\n", mask);
                 } else {
-                    printf("Ошибка: %s\n", E502_StandGetErrorStr(&stand));
+                    printf("[ERROR] Pull-up setting failed: %s\n", E502_StandGetErrorStr(&stand));
                 }
+            } else {
+                printf("Usage: pullup <hex_mask>\n");
             }
         } else if (strcmp(cmd, "apply") == 0) {
             if (E502_StandApplyConfig(&stand) == X502_ERR_OK) {
-                printf("Настройки успешно записаны в регистры модуля E-502!\n");
+                printf("[SUCCESS] Configuration written to FPGA successfully.\n");
             } else {
-                printf("Ошибка конфигурации: %s\n", E502_StandGetErrorStr(&stand));
+                printf("[ERROR] Configuration failed: %s\n", E502_StandGetErrorStr(&stand));
             }
         } else if (strcmp(cmd, "adc") == 0) {
             uint32_t frames = 1;
@@ -167,13 +188,13 @@ int main(void) {
             double volts[STAND_MAX_CHANNELS];
             for (uint32_t f = 0; f < frames; f++) {
                 if (E502_StandReadAdcFrame(&stand, volts, 1000) == X502_ERR_OK) {
-                    printf("Кадр #%u: ", f + 1);
+                    printf("Frame #%03u: ", f + 1);
                     for (uint32_t c = 0; c < stand.lch_count; c++) {
-                        printf("[LCH%u: %+8.4f V] ", c, volts[c]);
+                        printf("[CH%u: %+8.4f V] ", c, volts[c]);
                     }
                     printf("\n");
                 } else {
-                    printf("Ошибка чтения АЦП: %s\n", E502_StandGetErrorStr(&stand));
+                    printf("[ERROR] ADC read failed: %s\n", E502_StandGetErrorStr(&stand));
                     break;
                 }
             }
@@ -183,29 +204,30 @@ int main(void) {
             if (sscanf(line, "%*s %u %lf", &ch_num, &v) == 2 && (ch_num == 1 || ch_num == 2)) {
                 uint32_t dac_const = (ch_num == 1) ? X502_DAC_CH1 : X502_DAC_CH2;
                 if (E502_StandWriteDac(&stand, dac_const, v) == X502_ERR_OK) {
-                    printf("На ЦАП%u подано напряжение %.3f В.\n", ch_num, v);
+                    printf("[OK] DAC%u output set to %.3f V\n", ch_num, v);
                 } else {
-                    printf("Ошибка записи в ЦАП: %s\n", E502_StandGetErrorStr(&stand));
+                    printf("[ERROR] DAC write failed: %s\n", E502_StandGetErrorStr(&stand));
                 }
             } else {
-                printf("Формат: dac <1|2> <volts>\n");
+                printf("Usage: dac <1|2> <volts>\n");
             }
         } else if (strcmp(cmd, "blink") == 0) {
             if (E502_StandBlinkLed(&stand) == X502_ERR_OK) {
-                printf("Команда моргания светодиодом LED1 отправлена.\n");
+                printf("[OK] LED1 blink command sent.\n");
             } else {
-                printf("Ошибка: %s\n", E502_StandGetErrorStr(&stand));
+                printf("[ERROR] Blink failed: %s\n", E502_StandGetErrorStr(&stand));
             }
         } else if (strcmp(cmd, "close") == 0) {
             E502_StandDisconnect(&stand);
-            printf("Соединение закрыто.\n");
+            printf("[OK] Connection closed.\n");
         } else {
-            printf("Неизвестная команда '%s'. Введите 'help'.\n", cmd);
+            printf("[UNKNOWN COMMAND] '%s'. Type 'help' for command list.\n", cmd);
         }
     }
 
     if (stand.is_connected) {
         E502_StandDisconnect(&stand);
     }
+    printf("CLI terminated.\n");
     return 0;
 }

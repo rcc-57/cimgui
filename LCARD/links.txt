@@ -1,1 +1,4 @@
 https://www.lcard.ru/download/lpcie_setup.exe
+
+gcc -Wall -O2 -I"C:/Program Files/L-Card/x502/sdk/include" main_cli.c e502_ctrl.c -L "C:\Program Files (x86)\L-Card\lpcie\lib\mingw64" -lx502api -le502api -o stand_cli.exe
+
